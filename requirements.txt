@@ -1,0 +1,2 @@
+# El dashboard solo usa la librería estándar de Python 3.
+# Este archivo está vacío a propósito para que Railway detecte que es un proyecto Python.
