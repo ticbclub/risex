@@ -5444,6 +5444,7 @@ footer{color:var(--muted);font-size:11.5px;margin-top:18px;line-height:1.6}
     <div class="navitem" data-v="compare"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h6"/><path d="M14 6h6"/><path d="M4 12h6"/><path d="M14 12h6"/><path d="M4 18h6"/><path d="M14 18h6"/></svg></span>Compare wallets</div>
     <div class="navitem" data-v="watchlist"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5 12 2"/></svg></span>Watchlist</div>
     <div class="navitem" data-v="alerts"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>Alerts</div>
+    <div class="navitem" data-v="copy"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>Copy trading</div>
    </div>
   </div>
   <!-- Hidden but reachable via cmdK -->
@@ -5794,7 +5795,7 @@ footer{color:var(--muted);font-size:11.5px;margin-top:18px;line-height:1.6}
  </div>
 </div>
 
-<div class="view" id="v_copy" style="display:none!important" aria-hidden="true">
+<div class="view" id="v_copy">
  <div class="panel">
   <h2>Copy trading · mirror the house trader</h2>
   <div class="note" style="margin-bottom:14px">Your funds never leave your own RISEx account. One signature authorizes the copy engine to <b>trade</b> on your account — it can never withdraw, and you can pause or revoke at any time. Positions mirror the leader proportionally to your equity. <b>Leveraged perps can liquidate your account; past performance guarantees nothing.</b></div>
@@ -6188,7 +6189,8 @@ const CMDK_VIEWS=[
  {key:'users',name:'Users / adoption',ic:'👥'},
  {key:'watchlist',name:'Watchlist',ic:'⭐'},
  {key:'tools',name:'Tools (simulator & calculator)',ic:'🧰'},
- {key:'alerts',name:'Alerts',ic:'🔔'}];
+ {key:'alerts',name:'Alerts',ic:'🔔'},
+ {key:'copy',name:'Copy trading',ic:'🪞'}];
 /* ===== Copy trading ===== */
 // Set this to your deployed engine URL (e.g. https://xxxx.up.railway.app) so visitors don't have to type it.
 const CP_DEFAULT_API='https://risex-copy-production.up.railway.app';
@@ -6201,7 +6203,12 @@ async function cpFetch(path,opts){
  return d;
 }
 function cpShort(a){return a?a.slice(0,6)+'…'+a.slice(-4):'—';}
-function initCopy(){ /* Copy trading deshabilitado: sección oculta, sin arranque */ }
+function initCopy(){
+ const inp=document.getElementById('cp_api');
+ if(inp&&!inp.value) inp.value=localStorage.getItem('cp_api')||CP_DEFAULT_API;
+ if(localStorage.getItem('cp_api_ok')==='1'&&!CP.info) cpConnectEngine(true);
+ if(!window._cpdInit){ window._cpdInit=true; cpdRefreshAll(); cpdStartAutoRefresh(); }
+}
 async function cpConnectEngine(quiet){
  const inp=document.getElementById('cp_api');
  localStorage.setItem('cp_api',inp.value.trim()||'http://localhost:8790');
@@ -6452,7 +6459,7 @@ function navigateView(key){
  const map={ranking:'loadRanking',markets:'loadHistory',acctoi:'loadAcctOi',users:'loadUsers',
   volranking:'loadVolRanking',oiranking:'loadOiRanking',funding:'loadFunding',pnl:'loadPnl',
   funded:'loadFunded',liq:'loadLiq',feed:'loadFeed',longshort:'loadLongShort',
-  heatmap:'loadHeatmap',marketshare:'loadMarketShare',watchlist:'loadWatchlist',tools:'initTools'};
+  heatmap:'loadHeatmap',marketshare:'loadMarketShare',watchlist:'loadWatchlist',tools:'initTools',copy:'initCopy'};
  const fn=window[map[key]];if(typeof fn==='function')fn();
 }
 function renderCmdK(q){
@@ -8745,6 +8752,7 @@ document.addEventListener('click',e=>{
 // Routing por hash: #wallet=0x... o #market=ID
 function handleHashRoute(){
  const h=location.hash||'';
+ if(h==='#copy'){ navigateView('copy'); return; } // puerta directa (sin entrada en menú)
  const w=h.match(/wallet=(0x[0-9a-fA-F]{40})/);
  const mk=h.match(/market=(\d+)/);
  const bl=h.match(/block=(\d+)/);
