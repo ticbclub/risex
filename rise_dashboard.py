@@ -4080,13 +4080,13 @@ _INFO_BRAND = """<div class="brand"><a href="/"><div class="logo"><svg viewBox="
 # ---------------------------------------------------------------------------
 # Volume League — competicion de la comunidad (22 jul -> 1 ago 2026)
 # Reglas: cuenta TODO el volumen (taker + maker) de la lista fija de wallets;
-# >= $200K de volumen => +5% de boost de puntos; TOP 5 => +20%.
+# >= $500K de volumen => +5% de boost de puntos; TOP 5 => +20%.
 # El volumen sale de la propia BD del indexador (tabla trades), calculado en
 # el servidor y cacheado 60s — mismos numeros para todos, al instante.
 # ---------------------------------------------------------------------------
 LEAGUE_START_TS = calendar.timegm((2026, 7, 22, 0, 0, 0))
 LEAGUE_END_TS   = calendar.timegm((2026, 8, 1, 0, 0, 0))
-LEAGUE_MIN_VOL  = 200_000
+LEAGUE_MIN_VOL  = 500_000
 LEAGUE_TOP_N    = 5
 LEAGUE_WALLETS  = [
 "0x01a4c3cbdc016a58adfd5dffc359724322d2a2f3",
@@ -4408,12 +4408,12 @@ footer{border-top:1px solid var(--line);padding:16px 0;font-size:11.5px;color:va
     <div class="ch-sub">del <b style="color:var(--text)">22 jul</b> al <b style="color:var(--text)">1 ago · 00:00 UTC</b> — 10 días</div>
   </div>
 
-  <div class="note">🏆 <b>Premios en boost de puntos:</b> con <b>$200K+</b> de volumen te llevas <b>+5%</b> de boost ·
+  <div class="note">🏆 <b>Premios en boost de puntos:</b> con <b>$500K+</b> de volumen te llevas <b>+5%</b> de boost ·
     el <b>TOP 5</b> se lleva <b>+20%</b>. Aquí cuenta TODO el volumen: taker y maker.</div>
 
   <div class="kpis">
     <div class="card kpi"><div class="k">Volumen total</div><div class="v big" id="k-vol">—</div><div class="d">desde el inicio</div></div>
-    <div class="card kpi"><div class="k">Con +5% asegurado</div><div class="v" id="k-q" style="color:var(--up)">—</div><div class="d" id="k-q-d">≥ $200K de volumen</div></div>
+    <div class="card kpi"><div class="k">Con +5% asegurado</div><div class="v" id="k-q" style="color:var(--up)">—</div><div class="d" id="k-q-d">≥ $500K de volumen</div></div>
     <div class="card kpi"><div class="k">Corte del TOP 5</div><div class="v" id="k-cut" style="color:var(--amber)">—</div><div class="d">volumen del 5º puesto</div></div>
     <div class="card kpi"><div class="k">Líder</div><div class="v" id="k-lead" style="font-size:16px">—</div><div class="d" id="k-lead-d"></div></div>
   </div>
