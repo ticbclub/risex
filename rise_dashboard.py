@@ -4026,6 +4026,7 @@ def main():
     threading.Thread(target=volume_indexer_loop, daemon=True).start()
     threading.Thread(target=funding_indexer_loop, daemon=True).start()
     threading.Thread(target=explorer_indexer_loop, daemon=True).start()
+    threading.Thread(target=league_indexer_loop, daemon=True).start()
     if not IS_CLOUD:
         try:
             import webbrowser
@@ -4279,6 +4280,34 @@ def get_league():
             "updated": int(time.time()), "rows": out}
 
 
+def league_indexer_loop():
+    """Garantiza que las wallets de la Volume League esten indexadas.
+
+    Tras un arranque con BD vacia (p.ej. deploy sin volumen persistente),
+    fuerza el escaneo del historial de cada wallet de la liga (~30 dias,
+    cubre la ventana completa de la competicion) aunque nadie las visite.
+    Despues las mantiene frescas en rotacion. Se apaga solo al acabar la liga.
+    INSERT OR IGNORE hace que solaparse con los demas indexadores sea inocuo."""
+    time.sleep(25)  # dejar levantar el servidor y el resto de hilos
+    while True:
+        now_s = int(time.time())
+        if now_s > LEAGUE_END_TS + 12 * 3600:
+            print("[league] competicion terminada — indexador de liga parado", flush=True)
+            return
+        t0 = time.time()
+        done = 0
+        for a in LEAGUE_WALLETS:
+            try:
+                _account_metrics(a, int(time.time()))
+                done += 1
+            except Exception as e:
+                print(f"[league] err {a[:10]}: {e}", flush=True)
+            time.sleep(0.6)  # suave con la API de RISE
+        dt = time.time() - t0
+        print(f"[league] pasada completa: {done}/{len(LEAGUE_WALLETS)} wallets en {dt:.0f}s", flush=True)
+        time.sleep(max(120.0, 300.0 - dt))
+
+
 LEAGUE_HTML = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -4465,6 +4494,7 @@ footer{border-top:1px solid var(--line);padding:16px 0;font-size:11.5px;color:va
     const rows = data.rows || [];
     const tot = data.total_vol || 0;
     const q = data.qualified || 0;
+    if(started && tot === 0) $('#upd').textContent = 'reindexando histórico…';
 
     $('#k-vol').textContent = started && rows.length ? usd(tot) : '—';
     $('#k-q').textContent = started && rows.length ? q : '—';
