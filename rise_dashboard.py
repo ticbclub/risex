@@ -3948,6 +3948,10 @@ class Handler(BaseHTTPRequestHandler):
                              "total_withdrawals": round(withdrawals, 2),
                              "net": round(deposits - withdrawals, 2),
                              "transfers": rows})
+            elif path.path == "/api/league":
+                self._json(_memo("league", 60, get_league))
+            elif path.path == "/league":
+                self._send(200, LEAGUE_HTML.encode("utf-8"), "text/html; charset=utf-8")
             elif path.path == "/sitemap.xml":
                 self._send(200, _sitemap_xml().encode("utf-8"), "application/xml; charset=utf-8")
             elif path.path == "/robots.txt":
@@ -4071,6 +4075,449 @@ code{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:13px;ba
 @media (max-width:600px){h1{font-size:32px}h2{font-size:20px}.wrap{padding:40px 20px 60px}.metricdef{grid-template-columns:1fr;gap:4px}}"""
 
 _INFO_BRAND = """<div class="brand"><a href="/"><div class="logo"><svg viewBox="0 0 252 303"><path d="M176.12 0.39H0.59V50.72H176.12C189.97 50.72 201.20 61.98 201.20 75.88V101.04H77.36C34.96 101.04 0.59 135.41 0.59 177.81V302.34H50.74V184.00L177.66 302.33H251.36L89.42 151.37H201.20V101.29H251.36V75.88C251.36 34.19 217.66 0.39 176.12 0.39Z" fill="#fff"/></svg></div><div><div class="name">RISExscan</div><div class="sub">Live perp analytics</div></div></a></div>"""
+
+# ---------------------------------------------------------------------------
+# Volume League — competicion de la comunidad (22 jul -> 1 ago 2026)
+# Reglas: cuenta TODO el volumen (taker + maker) de la lista fija de wallets;
+# >= $200K de volumen => +5% de boost de puntos; TOP 5 => +20%.
+# El volumen sale de la propia BD del indexador (tabla trades), calculado en
+# el servidor y cacheado 60s — mismos numeros para todos, al instante.
+# ---------------------------------------------------------------------------
+LEAGUE_START_TS = calendar.timegm((2026, 7, 22, 0, 0, 0))
+LEAGUE_END_TS   = calendar.timegm((2026, 8, 1, 0, 0, 0))
+LEAGUE_MIN_VOL  = 200_000
+LEAGUE_TOP_N    = 5
+LEAGUE_WALLETS  = [
+"0x01a4c3cbdc016a58adfd5dffc359724322d2a2f3",
+"0x054ae303fcc8de33d6983681e03e6776ebe95ab2",
+"0x061126af439c46c8c9f219d12fec4047248d36ee",
+"0x0c43a1f690972823df171185865aadfc05cb726d",
+"0x0c643306a5c176fc2122809447aeb9e080f489aa",
+"0x0c94959001aa4f11bb8791b640b73e658522c8e0",
+"0x0e183f408cbf40b7428adfd02fcac9a46a2b1961",
+"0x10510290c3b39ba1366a683c7a1f9093063baa01",
+"0x11a9249903d951723268e5eb37506f57a16ee17a",
+"0x134be30b5b0b95367595d2f1c21a4e75e1c6e8f1",
+"0x1642cc1b66f2e3bb1ad06b7261981ded9d77397b",
+"0x1b06d8b2a64118028e9d3f2e99e4c2b7c4a45f54",
+"0x1b58efe82ec954f60fed62b0e75eee66d5cbb108",
+"0x1ccf424aee6d87de22353872a30cf96d0a320744",
+"0x1ce291f3aa96c87ab10efd007d6cca4e6b090e84",
+"0x1e3fa5fd341b1f1864793c4c6f126a2a02da6a37",
+"0x1e81edff1658c2f2b83dc6b29e288c9116eef320",
+"0x217d066699d87a0b61cf6bfc72d50ba34d82a987",
+"0x254830cb8a45413237712499e838ecd657963114",
+"0x295f87671b9c1f6a090b9a3bd86484608c27917c",
+"0x2a63eb6780448379962339d88783445d3f770f5c",
+"0x2a96e5f524bd25873dda57aa1ebf8c4a89ba26f4",
+"0x2be9038e19e15a018c799d07ab3ad79f7a9baac4",
+"0x2c662977da2f5f26b33832312c8c9086ee2d2344",
+"0x2d403d80660674a2bfcc086b7e47c3de37f09ed4",
+"0x2ec7491394bcbd30d0b2e78f54b1591d3f2ea8a4",
+"0x2ee0597fe557daccda27e818f0e2cff1391daf8e",
+"0x32c56448865100a9a9ff3aeb44b4d824bdb35fa4",
+"0x341350a5bd357146fe339c0b44928a4ff5c67773",
+"0x351cc81e65cf4cac78c61fc489ae37915711f73e",
+"0x3589a7e9aff8e312c66ae5f51fe3de6ff95a9821",
+"0x359665284b127fbb26ce97ad5d2aa114752d1c57",
+"0x35bb17f553097ea1b4920cb8ab21a21aa4a66665",
+"0x35dfc46ef53511f56c1f89126f45be24089a7c7f",
+"0x36bd3da5ecf14b381a9edd542ea930445d5f0606",
+"0x37bb22270e48bf1ce2ae4b6338c5c401c6de33aa",
+"0x380fd1a31ca5e25a32e3b81d9f05ddcaba44bd71",
+"0x3887b1ed6383ab3e0431f490f5f876f44dfa24bc",
+"0x3c937d6d1458ccc9ccf6b9609a07e3d93d37a069",
+"0x3d075154f5a275cd2ec254192ca98f2e9d553d90",
+"0x3fc56aaab3de3c92cb5c3a36f2dce528231c1010",
+"0x41bd10dd4986f16e05d493b9660da9cd1f1d9b0f",
+"0x41d26da5afdcb84a90d47b9276840861759199de",
+"0x43b95b9c5bf9c74e02d4b883a70c5af20b8a99e7",
+"0x455a40c3f365ed4a097d1cf17f2600349acb6e9c",
+"0x4693df65a63c4ed05597ef65ab9a77f75b2c3f95",
+"0x4794baf61515a5fda60ed1342d26f8108a96340c",
+"0x4832780bfa5511d2028e39b42689a520d170b664",
+"0x4aab5d8fc6c6ecd7bc747a7cc8d5e61ea46dfc44",
+"0x4b218e595ba61f389253163a733cca45cf9942c8",
+"0x4c4f2b1dfea107832743bd848477d13a194a3ca6",
+"0x4cdba91d62c3d7d669391a03f4069aa6693b54d7",
+"0x4e66f55cc93fa8db3c263f7c03722a6dc8bcd5e8",
+"0x4e67497559bdd97d8f1aefc9dd6e457923b1f101",
+"0x4f2e6dea8ee08d62aa4128a00065ac8ed14658cd",
+"0x4fe30bc714c0985c140a80faaf21a1e46fab43f3",
+"0x52c09074eb2596796bf6ff6ae00a7bb0c7a7d1b9",
+"0x536e51023e0189e41d2b6ebcde45034e092f2397",
+"0x553d0f296ad69e9a52fa5c7b22509eac0c0bf111",
+"0x5566c3d6acfff4d58f903bf75b2d7656518b7213",
+"0x585a30611dac4da3b84c8da73468bef169dc3397",
+"0x591f8bba6d9102b6626286c43c76ea3736767952",
+"0x59d10adfac735978e7947a5432742dc400dc52aa",
+"0x5a93f5b34820b49119f4c23b4429ce02af306757",
+"0x5e2d26de7e7cc792d917571d7779dd90a3514675",
+"0x5e9862ebe77eed1db11b4cfe1a223ff95dfb6632",
+"0x6306224ddf6faaed738f44151247f9ec22579fbd",
+"0x65d3f6794a83916c687921030dea698b17d589de",
+"0x667cd32ca8b691eca59c2e556923eecdf69ca1a0",
+"0x670aeabf52531e434d7dccf4c0cf1280e33e5832",
+"0x6a3c1b0be8c53af0f351ee6efef18ae3892187e9",
+"0x6baa62779e7591445f4dfe52ab999a933d7a804b",
+"0x6c13a21dac9ac8eb47cf6296d6eea7a1c4c7e87c",
+"0x6d975f91efc2fc9b1f65c1ca3ade8334635cec6d",
+"0x70ec2ec3fe51929345f4ee7a3079ca4a30f42115",
+"0x71199aa13c02f1e4c71bf9c3fec0b62a8a75bcb3",
+"0x722ab179b05c937d9009a52ead3445671f2ac703",
+"0x749e2629ad16cfaeccaecef4a4ea7cd12a5f7eaf",
+"0x76c519ad2d3578d497bd82fe3a2e1216fa712d59",
+"0x78645b860e153dc244716c928402cf712cb8a1bd",
+"0x7a53ff085aad6ea9e394f35cc0204f04ad22bf47",
+"0x7b36e27a59d6e6bd3258bf90314072ea866eb29e",
+"0x7cf66d79195141018579e0b9f03053664a5475ba",
+"0x7ea69a5d57ce4cdb766ddd205fa56a323cdf83d4",
+"0x817901e33848bbb0fd6bcf6d804ba9a47f333885",
+"0x8531a31c5f4e5e07d0faeaef7cb9900a79ff9315",
+"0x85cec0bb0b38efaaf8217328488ec0374671593e",
+"0x874ccd286e0590100a1b16bb846ce05650702218",
+"0x87c2194f3155e0d93bb40533879e97c02c290937",
+"0x88900216ccd96d6d6240dd5b7700b198499a7c6a",
+"0x8aebf76afea865d80906df65cee9b1609d202333",
+"0x8fe00fb53e7d12580a330e7702abc76d812fef4d",
+"0x936fe5ea7533cc1ad401a304e51f25fdae96c7eb",
+"0x9abeb8e8a45330ae4aea20764e9bc573a8651be1",
+"0xa0d3a93bbce155187a7b78252d8298cc3f28e884",
+"0xa1e022dad52c2e50134df21f4c8a1d5a86301c4f",
+"0xa2f06229080a3b199f65720c0988af068c2d9e98",
+"0xa358ca417d14754e1c64e08c7412a4806e896ec6",
+"0xa8e9734b25f0c79be56337ef41dbee4d2cb55fe8",
+"0xaa87ee03d91be06b794a239db8dbea966b6771e7",
+"0xaac29e79761b140eb8745d57fd324af974416bbf",
+"0xae549da7f76b62fd82c2945147cca5e09dabb474",
+"0xaf96951d3d1c5dd6d676307cec7cecf242aafdbf",
+"0xb061d61fb4a4031f7f528378aec7302d5fc6a498",
+"0xb08359d37003ab61c38411c46ae647cbdb26db97",
+"0xb093c98788a38aba169420a4fa3afe20eede1561",
+"0xb47826a07a9e21923e57d70882157b5776e8ad1f",
+"0xb4f7b3ea72d8f834612b370d323d3aa7ebc1d253",
+"0xb50e5743e8b1eeb3afe08419843caa22e568203f",
+"0xb6e02394def3f11c3a7f3ad0e91b747305d3f045",
+"0xb6f12c211f5f039e9185238508c0a9be60a370af",
+"0xb791e6efcfbde977263b59f6228dfe72c7d66a67",
+"0xb7a10b3b00e1e757f8762efea9910105d909ee1c",
+"0xb88e58077cb0e8ce59e2a0b31694d764460421f9",
+"0xbe065ebba26a54809c2a692b9056b6be1cf19081",
+"0xbf6266a545c232ffb08d3727ca47c15ce2062d10",
+"0xbfd3c41de3cebfbbd5ba39325f69dfd2bf2a9f51",
+"0xc02dd2d1403463b8d2f79cd5e114568af3775cbd",
+"0xc12c81284a9b05d11520474cdfb817d115c942e3",
+"0xc1d2d9aa00f09fd0392992a6421c3bea7d1b6c83",
+"0xc2334a8945e142b31ae0e4162f7d2c480ba9baa3",
+"0xc25bc6de6431cfe0cef0e4ea4abe84f046604504",
+"0xc3159c0ec0f66ca8cc6d87abef9ef443497b4be6",
+"0xc382d3f879a1161a562865c334d80d7a7359c80c",
+"0xc4a84144a4743d161eb3a7713e28b6b7a652fb25",
+"0xc5d4a46aec7f38d75a76404d9c5fe6c0fcb75653",
+"0xc701bd6ded6f47188430eda8b2bb31d87637b513",
+"0xcac2ef22949d92ccdbf5992c870f3b1625da8d9f",
+"0xcca80fc8360d9024250a2e1959b9267c72efe87f",
+"0xce5e4ddcdc98843569e4d8784ea38b1f9acb016d",
+"0xceb0802ca5841ce28f708d75ed1de77c64cd06a9",
+"0xd098dfc7b4737c19d5f9e6f04784b71fae0df07d",
+"0xd1c8849b3afd1b55e2038d30f9f77f511a83e9e7",
+"0xd1f86f3c3e14aa992cafb6941e3b6410fde77aa2",
+"0xd4670a5af0e4a4851babdda4c35994b61f9759f7",
+"0xd4b327e8405087ef70747a85c2d51a22a7c88061",
+"0xd63a4e75c2faaeefe45d82e6f49bf7e9bedd37dd",
+"0xd91fa7b82c6dcdf6cfc2cbdd0bf2ac19753c17c0",
+"0xdc3116cfa2e2f2b66e67c25bf78b7e8abb10e6db",
+"0xde83fc13e2f00d89d1e88d6444b53ed157900e68",
+"0xe17d4646768a46f42509a6ba524b17ff568f0245",
+"0xe4c26df9ac9718d23880e1b4900849e6e6c1630e",
+"0xea1e5d8f06f505e6dd9adfa5d2004b48a6c4e6e8",
+"0xeabaf2f4b5b1a755aab1ca44ebfd25e8a2b0037f",
+"0xebdcc84ae6f22dc21b9794d2a42661613502cf5a",
+"0xedbc6a2825a413da20cfdbb671c5beab32a3a97f",
+"0xee235618ac8aa951e3108616c1aeb65bf5efd058",
+"0xf06ab1b6394560607af0f61808b42a6368758bd7",
+"0xf0941f06e586677dbad1015dfe4a54ea94c76475",
+"0xf2d156db1bb92ed70746ab28cae9c689ec465ca2",
+"0xf3dc78592499a62511953fda21ac63ff128e1a7d",
+"0xf6c0b6caaf69d962bf24ec464c9453d97fa4cdc0",
+"0xf8255aa69e99c2a3f79ff48436746aef0675d231",
+"0xf95313b5a26f6939032faac03cc6b918900fe014",
+"0xf9cbea7b64225431b0932f375abc73ce2f9bbfae",
+"0xfa0a96d77da5b00127b3aebeb10cd8bb487249e5",
+"0xfdfa268a2188738962ea2f351f77c95fe87f8cbc",
+"0xfe307fa5ec586b8a2ff847c6694db0a2f2f9a24e",
+"0xff6dfefa9349a050235d72d138088432c022db5a"
+]
+
+
+def get_league():
+    agg = {}
+    try:
+        ph = ",".join("?" * len(LEAGUE_WALLETS))
+        with _DB_LOCK:
+            rows = _db().execute(
+                "SELECT account, SUM(size*price) AS vol, COUNT(*) AS n, MAX(ts) AS last "
+                "FROM trades WHERE ts >= ? AND ts < ? AND account IN (" + ph + ") "
+                "GROUP BY account",
+                [LEAGUE_START_TS, LEAGUE_END_TS] + LEAGUE_WALLETS,
+            ).fetchall()
+        for a, vol, cnt, last in rows:
+            agg[a] = (vol or 0.0, cnt or 0, last or 0)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    out = []
+    for a in LEAGUE_WALLETS:
+        vol, cnt, last = agg.get(a, (0.0, 0, 0))
+        out.append({"account": a, "vol": round(vol, 2), "trades": cnt, "last": last})
+    out.sort(key=lambda x: -x["vol"])
+    total = round(sum(x["vol"] for x in out), 2)
+    qualified = sum(1 for x in out if x["vol"] >= LEAGUE_MIN_VOL)
+    return {"ok": True,
+            "start": LEAGUE_START_TS, "end": LEAGUE_END_TS,
+            "min_vol": LEAGUE_MIN_VOL, "top_n": LEAGUE_TOP_N,
+            "total_vol": total, "participants": len(out), "qualified": qualified,
+            "updated": int(time.time()), "rows": out}
+
+
+LEAGUE_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volume League · RISEx</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%23080d00' width='32' height='32' rx='7'/%3E%3Cpath d='M8 24V14M16 24V8M24 24V17' stroke='%238df885' stroke-width='3.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080d00; --surface:#0d1406; --surface2:#121a0a; --line:#1c261c; --line2:#2a3a2a;
+  --green:#8df885; --cyan:#22ffe2; --up:#5bf055; --down:#ff5c6c; --amber:#ffc908;
+  --text:#e8f5e6; --muted:#7d8b7d; --faint:#4a564a;
+  --mono:'IBM Plex Mono',ui-monospace,monospace; --sans:'Space Grotesk',system-ui,sans-serif;
+  --r:6px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;
+     background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(141,248,133,.07),transparent)}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line);padding:14px 0;position:sticky;top:0;background:rgba(8,13,0,.92);
+       backdrop-filter:blur(8px);z-index:10}
+.hbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{font-size:17px;font-weight:700}.logo b{color:var(--green)}
+.logo span{color:var(--muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-left:8px}
+.hmeta{margin-left:auto;display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;
+     box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.4}}
+button{font-family:var(--mono);font-size:12px;color:var(--green);background:var(--surface2);
+       border:1px solid var(--line2);border-radius:var(--r);padding:7px 14px;cursor:pointer;transition:all .15s}
+button:hover{border-color:var(--green)}
+main{padding:26px 0 60px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.count-hero{padding:34px 24px;text-align:center;margin-bottom:16px}
+.count-hero .ch-lbl{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.count-hero .ch-big{font-family:var(--mono);font-size:46px;font-weight:700;letter-spacing:-.02em;
+                    color:var(--green);text-shadow:0 0 24px rgba(141,248,133,.4)}
+.count-hero .ch-sub{font-family:var(--mono);font-size:13px;color:var(--muted);margin-top:12px}
+.count-hero.live .ch-big{color:var(--text);font-size:34px}
+.count-hero.live .ch-lbl{color:var(--green)}
+.note{background:var(--surface2);border:1px solid var(--line2);border-left:3px solid var(--amber);
+      border-radius:var(--r);padding:11px 15px;font-family:var(--mono);font-size:12px;
+      color:var(--text);margin-bottom:20px;line-height:1.7}
+.note b{color:var(--amber)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+@media(max-width:800px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{padding:15px 17px}
+.kpi .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.kpi .v{font-family:var(--mono);font-size:21px;font-weight:700;letter-spacing:-.02em}
+.kpi .d{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px}
+.big{color:var(--green);text-shadow:0 0 18px rgba(141,248,133,.35)}
+.sec-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px}
+.sec-title{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.sec-title::before{content:'—';color:var(--green);margin-right:8px}
+.rk{display:grid;grid-template-columns:52px 1fr auto;gap:0 16px;align-items:center;
+    padding:11px 16px;border-bottom:1px solid rgba(28,38,28,.55);position:relative;overflow:hidden}
+.rk:last-child{border-bottom:none}
+.rk .bar{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,rgba(141,248,133,.10),rgba(141,248,133,.02));
+         border-right:1px solid rgba(141,248,133,.18);transition:width .8s ease;z-index:0}
+.rk>*{position:relative;z-index:1}
+.rk .pos{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--muted);text-align:center}
+.rk.p1 .pos{color:var(--amber);font-size:20px}
+.rk.p2 .pos{color:#cfd8cf;font-size:19px}
+.rk.p3 .pos{color:#d0925a;font-size:18px}
+.rk.top5{background:rgba(255,201,8,.03)}
+.rk .who .addr{font-family:var(--mono);font-size:14px;color:var(--green);font-weight:500}
+.rk .who .meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+.rk .num{text-align:right}
+.rk .num .vol{font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:-.01em}
+.rk.p1 .num .vol{color:var(--amber)}
+.badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:700;
+       padding:2px 9px;border-radius:20px;margin-top:4px}
+.b20{background:rgba(255,201,8,.12);color:var(--amber);border:1px solid rgba(255,201,8,.35)}
+.b5{background:rgba(91,240,85,.10);color:var(--up);border:1px solid rgba(91,240,85,.3)}
+.bfalta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px}
+.bfalta b{color:var(--amber)}
+.empty{padding:30px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:12.5px}
+footer{border-top:1px solid var(--line);padding:16px 0;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<header><div class="wrap hbar">
+  <div class="logo">volume<b>league</b><span>RISEx · comunidad</span></div>
+  <div class="hmeta">
+    <span><span class="dot"></span><span id="upd">conectando…</span></span>
+    <button id="btn-scan">↻ actualizar</button>
+  </div>
+</div></header>
+
+<main class="wrap">
+
+  <div class="card count-hero" id="hero">
+    <div class="ch-lbl" id="hero-lbl">LA COMPETICIÓN EMPIEZA EN</div>
+    <div class="ch-big" id="hero-big">—</div>
+    <div class="ch-sub">del <b style="color:var(--text)">22 jul</b> al <b style="color:var(--text)">1 ago · 00:00 UTC</b> — 10 días</div>
+  </div>
+
+  <div class="note">🏆 <b>Premios en boost de puntos:</b> con <b>$200K+</b> de volumen te llevas <b>+5%</b> de boost ·
+    el <b>TOP 5</b> se lleva <b>+20%</b>. Aquí cuenta TODO el volumen: taker y maker.</div>
+
+  <div class="kpis">
+    <div class="card kpi"><div class="k">Volumen total</div><div class="v big" id="k-vol">—</div><div class="d">desde el inicio</div></div>
+    <div class="card kpi"><div class="k">Con +5% asegurado</div><div class="v" id="k-q" style="color:var(--up)">—</div><div class="d" id="k-q-d">≥ $200K de volumen</div></div>
+    <div class="card kpi"><div class="k">Corte del TOP 5</div><div class="v" id="k-cut" style="color:var(--amber)">—</div><div class="d">volumen del 5º puesto</div></div>
+    <div class="card kpi"><div class="k">Líder</div><div class="v" id="k-lead" style="font-size:16px">—</div><div class="d" id="k-lead-d"></div></div>
+  </div>
+
+  <section>
+    <div class="sec-head"><div class="sec-title">Clasificación · boost por volumen</div>
+      <div class="sec-title" style="text-transform:none;letter-spacing:0" id="rk-meta"></div></div>
+    <div class="card" id="ranking"><div class="empty">cargando clasificación…</div></div>
+  </section>
+
+</main>
+
+<footer><div class="wrap">volume league · RISEx — volumen taker + maker · calculado en el servidor sobre la base de datos
+  del indexador de risexscan · se actualiza solo cada minuto</div></footer>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const usd = n => {
+    const a=Math.abs(n||0), s=n<0?'-':'';
+    if(a>=1e9) return s+'$'+(a/1e9).toFixed(2)+'B';
+    if(a>=1e6) return s+'$'+(a/1e6).toFixed(2)+'M';
+    if(a>=1e3) return s+'$'+(a/1e3).toFixed(1)+'K';
+    return s+'$'+a.toFixed(2);
+  };
+  const short = a => a ? a.slice(0,6)+'…'+a.slice(-4) : '—';
+  const hhmm = ms => new Date(ms).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  const pad = n => String(n).padStart(2,'0');
+
+  let data = null;
+  let START_MS = Date.UTC(2026, 6, 22, 0, 0, 0);
+  let END_MS   = Date.UTC(2026, 7, 1, 0, 0, 0);
+  let MIN_VOL  = 200000;
+  let TOP_N    = 5;
+
+  function tick(){
+    const now = Date.now();
+    if(now < START_MS){
+      const s = Math.floor((START_MS-now)/1000);
+      const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+      $('#hero-lbl').textContent = 'LA COMPETICIÓN EMPIEZA EN';
+      $('#hero-big').textContent = pad(h)+':'+pad(m)+':'+pad(ss);
+      $('#hero').classList.remove('live');
+    } else if(now < END_MS){
+      const s = Math.floor((END_MS-now)/1000);
+      const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+      $('#hero-lbl').textContent = '● EN MARCHA — TERMINA EN';
+      $('#hero-big').textContent = (d>0? d+'d ' : '')+h+'h '+m+'m';
+      $('#hero').classList.add('live');
+    } else {
+      $('#hero-lbl').textContent = '🏁 COMPETICIÓN FINALIZADA';
+      $('#hero-big').textContent = 'resultados finales';
+      $('#hero').classList.add('live');
+    }
+  }
+
+  async function load(){
+    try{
+      const r = await fetch('/api/league', {cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json();
+      if(!d.ok) throw new Error(d.error || 'error');
+      data = d;
+      START_MS = d.start * 1000;
+      END_MS   = d.end * 1000;
+      MIN_VOL  = d.min_vol;
+      TOP_N    = d.top_n;
+      $('#upd').textContent = 'actualizado ' + hhmm((d.updated||0)*1000 || Date.now());
+      render();
+    }catch(e){
+      $('#upd').textContent = 'error — reintentando…';
+    }
+  }
+
+  function render(){
+    if(!data) return;
+    const started = Date.now() >= START_MS;
+    const rows = data.rows || [];
+    const tot = data.total_vol || 0;
+    const q = data.qualified || 0;
+
+    $('#k-vol').textContent = started && rows.length ? usd(tot) : '—';
+    $('#k-q').textContent = started && rows.length ? q : '—';
+    $('#k-q-d').textContent = '≥ '+usd(MIN_VOL)+' de volumen · de '+rows.length;
+    const cut = rows[TOP_N-1];
+    $('#k-cut').textContent = started && cut && (cut.vol||0)>0 ? usd(cut.vol) : '—';
+    const lead = rows[0];
+    if(started && lead && (lead.vol||0)>0){
+      $('#k-lead').textContent = short(lead.account);
+      $('#k-lead-d').textContent = usd(lead.vol)+' · '+(100*(lead.vol||0)/(tot||1)).toFixed(0)+'% del total';
+    } else { $('#k-lead').textContent='—'; $('#k-lead-d').textContent=''; }
+
+    $('#rk-meta').textContent = rows.length + ' participantes';
+    if(!started){
+      $('#ranking').innerHTML = '<div class="empty">⏳ el marcador arranca a las 00:00 UTC del 22 de julio<br><br>'+
+        rows.length+' wallets inscritas y listas</div>';
+      return;
+    }
+    if(!rows.length){
+      $('#ranking').innerHTML = '<div class="empty">sin datos aún…</div>';
+      return;
+    }
+    const max = Math.max(...rows.map(r=>r.vol||0), 1);
+    $('#ranking').innerHTML = rows.map((r,i)=>{
+      const v = r.vol||0;
+      const barw = 100*v/max;
+      const cls = (i===0?'p1':i===1?'p2':i===2?'p3':'') + (i<TOP_N && v>0 ? ' top5' : '');
+      const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+      let badge;
+      if(i < TOP_N && v > 0) badge = '<div class="badge b20">🚀 +20% BOOST</div>';
+      else if(v >= MIN_VOL)  badge = '<div class="badge b5">✅ +5% BOOST</div>';
+      else if(v > 0)         badge = '<div class="bfalta">faltan <b>'+usd(MIN_VOL - v)+'</b> para +5%</div>';
+      else                   badge = '<div class="bfalta">sin actividad</div>';
+      const meta = v>0 ? (r.trades||0)+' trades'+(r.last?' · último '+hhmm(r.last*1000):'') : '—';
+      return '<div class="rk '+cls+'">'+
+        '<div class="bar" style="width:'+barw.toFixed(1)+'%"></div>'+
+        '<div class="pos">'+medal+'</div>'+
+        '<div class="who"><div class="addr" title="'+r.account+'">'+short(r.account)+'</div>'+
+          '<div class="meta">'+meta+'</div></div>'+
+        '<div class="num"><div class="vol">'+usd(v)+'</div>'+badge+'</div>'+
+      '</div>';
+    }).join('');
+  }
+
+  $('#btn-scan').addEventListener('click', load);
+  tick(); setInterval(tick, 1000);
+  load(); setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>
+"""
+
 
 ABOUT_HTML = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
